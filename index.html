@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f5f7fb">
+  <title>WayLPU — Campus Route Finder</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17243b;
+      --muted: #78859a;
+      --line: #e7ebf2;
+      --blue: #4263eb;
+      --blue-soft: #edf1ff;
+      --green: #20a879;
+      --surface: #fff;
+      --shadow: 0 12px 35px rgba(37, 52, 83, .08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100vh;
+      background: #f5f7fb;
+      color: var(--ink);
+      font: 14px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    button, input { font: inherit; }
+    button { color: inherit; }
+
+    .app-shell { height: 100vh; min-height: 620px; display: flex; flex-direction: column; overflow: hidden; }
+    .topbar {
+      height: 58px;
+      flex: 0 0 58px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 22px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      position: relative;
+      z-index: 4;
+    }
+    .brand { display: flex; align-items: center; gap: 11px; }
+    .brand-mark {
+      width: 38px; height: 38px; display: grid; place-items: center;
+      border-radius: 12px; color: white; font-weight: 800; font-size: 15px;
+      letter-spacing: -.7px; background: linear-gradient(140deg, #5b7cfa, #3554d9);
+      box-shadow: 0 5px 12px rgba(66, 99, 235, .24);
+    }
+    .brand-name { font-size: 17px; font-weight: 750; letter-spacing: -.5px; }
+    .brand-name span { color: var(--blue); }
+    .brand-subtitle { color: var(--muted); font-size: 11px; margin-top: 1px; }
+    .topbar-right { display: flex; align-items: center; gap: 14px; color: var(--muted); font-size: 12px; }
+    .campus-pill { display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); padding: 8px 12px; border-radius: 20px; color: #536176; }
+    .campus-dot { width: 7px; height: 7px; border-radius: 50%; background: #20b987; box-shadow: 0 0 0 3px #e4f7f0; }
+
+    .workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: 410px minmax(0, 1fr); }
+    .sidebar { background: var(--surface); border-right: 1px solid var(--line); padding: 21px 20px 20px; overflow-y: auto; z-index: 2; }
+    .eyebrow { color: var(--blue); font-size: 10px; text-transform: uppercase; letter-spacing: 1.4px; font-weight: 800; }
+    h1 { font-size: 22px; line-height: 1.2; letter-spacing: -.7px; margin: 5px 0 4px; }
+    .intro { color: var(--muted); margin: 0 0 17px; font-size: 12px; }
+    .route-form { position: relative; }
+    .field-stack { position: relative; display: flex; flex-direction: column; gap: 10px; }
+    .field { position: relative; }
+    .field label { display: block; color: #68758a; font-size: 11px; font-weight: 650; margin: 0 0 6px 2px; }
+    .field-label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .field-label-row label { margin: 0 0 0 2px; }
+    .location-button { border: 0; padding: 2px 3px; background: transparent; color: var(--blue); font-size: 10px; font-weight: 700; cursor: pointer; }
+    .location-button:hover { color: #2948c5; text-decoration: underline; }
+    .location-button:disabled { color: var(--muted); cursor: wait; text-decoration: none; }
+    .location-status { margin: 5px 2px 0; color: var(--muted); font-size: 10px; }
+    .location-status:empty { display: none; }
+    .location-status.error { color: #b24646; }
+    .travel-modes { display: flex; gap: 5px; padding: 4px; margin: 0 0 16px; border-bottom: 1px solid var(--line); }
+    .travel-mode { min-width: 62px; display: flex; flex: 1; flex-direction: column; align-items: center; gap: 3px; border: 0; border-radius: 9px 9px 0 0; padding: 7px 5px 9px; color: #79869a; background: transparent; cursor: pointer; font-size: 10px; }
+    .travel-mode-icon { font-size: 17px; line-height: 1; }
+    .travel-mode.active { color: #126d86; background: #e8f7fa; box-shadow: inset 0 -3px #149bb3; font-weight: 750; }
+    .input-wrap { position: relative; }
+    .field-icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); width: 10px; height: 10px; border-radius: 50%; z-index: 1; }
+    .field-icon.origin { border: 2px solid #8794aa; }
+    .field-icon.destination { background: var(--blue); box-shadow: 0 0 0 3px #e9edff; }
+    .place-input {
+      width: 100%; height: 46px; border: 1px solid #e5e9f1; border-radius: 10px;
+      padding: 0 40px 0 36px; outline: none; color: var(--ink); background: #fff;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .place-input:focus { border-color: #9cafff; box-shadow: 0 0 0 3px rgba(66, 99, 235, .09); }
+    .place-input::placeholder { color: #a0a9b8; }
+    .clear-field { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); border: 0; background: transparent; color: #9aa5b5; padding: 5px; cursor: pointer; font-size: 18px; line-height: 1; }
+    .connector { position: absolute; left: 17px; top: 44px; height: 17px; border-left: 1px dashed #c5ccda; }
+    .swap-button {
+      position: absolute; z-index: 2; right: -9px; top: 50px; width: 29px; height: 29px;
+      display: grid; place-items: center; border: 1px solid #e5e9f1; border-radius: 9px;
+      background: #fff; color: #78859a; box-shadow: 0 2px 6px rgba(20, 35, 60, .06); cursor: pointer;
+    }
+    .swap-button:hover { color: var(--blue); border-color: #c8d2ff; }
+    .suggestions {
+      display: none; position: absolute; top: calc(100% + 5px); left: 0; right: 0; z-index: 5;
+      max-height: 240px; overflow-y: auto; background: #fff; border: 1px solid var(--line);
+      border-radius: 11px; box-shadow: var(--shadow); padding: 5px;
+    }
+    .suggestions.open { display: block; position: static; top: auto; left: auto; right: auto; margin-top: 5px; }
+    .suggestion {
+      display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px;
+      border: 0; border-radius: 8px; text-align: left; background: transparent; cursor: pointer;
+    }
+    .suggestion:hover, .suggestion:focus { background: #f4f6ff; outline: none; }
+    .suggestion-icon { width: 29px; height: 29px; display: grid; place-items: center; border-radius: 8px; background: #f0f3f9; font-size: 14px; }
+    .suggestion-name { font-size: 12px; font-weight: 650; }
+    .suggestion-category { font-size: 10px; color: var(--muted); margin-top: 1px; }
+    .no-results { padding: 14px 11px; color: var(--muted); font-size: 12px; }
+    .find-button {
+      width: 100%; height: 46px; margin-top: 15px; border: 0; border-radius: 10px;
+      background: var(--blue); color: #fff; font-weight: 700; cursor: pointer;
+      box-shadow: 0 6px 14px rgba(66, 99, 235, .19); transition: background .15s, transform .15s;
+    }
+    .find-button:hover { background: #3554d9; transform: translateY(-1px); }
+    .find-button:focus-visible, .quick-chip:focus-visible, .map-control:focus-visible { outline: 3px solid #c8d2ff; outline-offset: 2px; }
+
+    .section-heading { display: flex; justify-content: space-between; align-items: center; margin: 27px 0 11px; }
+    .section-heading h2 { margin: 0; font-size: 12px; font-weight: 750; }
+    .section-heading span { font-size: 10px; color: #929daf; }
+    .quick-list { display: flex; flex-wrap: wrap; gap: 7px; }
+    .quick-chip {
+      display: flex; gap: 6px; align-items: center; border: 1px solid #e9edf4; border-radius: 20px;
+      background: white; color: #5d6a80; padding: 7px 10px; font-size: 10px; cursor: pointer; transition: .15s;
+    }
+    .quick-chip:hover { background: var(--blue-soft); border-color: #d7dfff; color: var(--blue); }
+    .quick-chip .chip-emoji { font-size: 12px; }
+
+    .route-panel { display: none; margin-top: 20px; border-top: 1px solid var(--line); padding-top: 16px; }
+    .route-panel.visible { display: block; }
+    .route-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .route-title { font-size: 14px; font-weight: 750; margin: 0; }
+    .route-subtitle { color: var(--muted); font-size: 11px; margin-top: 3px; }
+    .walking-icon { width: 33px; height: 33px; flex: 0 0 auto; display: grid; place-items: center; background: #eef8f4; border-radius: 9px; font-size: 16px; }
+    .route-open-link { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 14px; height: 42px; border: 1px solid #dce4ff; border-radius: 9px; color: var(--blue); background: #f7f8ff; text-decoration: none; font-size: 12px; font-weight: 700; }
+    .route-open-link:hover { background: var(--blue-soft); }
+    .route-preview { margin-top: 13px; padding: 12px; border: 1px solid #e8edf2; border-radius: 10px; background: #fbfcfe; }
+    .route-preview-title { color: #68758a; font-size: 10px; font-weight: 750; text-transform: uppercase; letter-spacing: .7px; }
+    .route-preview-text { margin-top: 5px; color: #46556c; font-size: 11px; line-height: 1.5; }
+    .notice { margin-top: 11px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+
+    .map-area { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #e8edf0; }
+    .map-header { position: absolute; z-index: 600; top: 14px; left: 14px; right: 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; pointer-events: none; }
+    .map-header > div, .map-header-right { pointer-events: auto; }
+    .map-title-card { padding: 9px 12px; border: 1px solid rgba(226,231,236,.9); border-radius: 10px; background: rgba(255,255,255,.95); box-shadow: 0 3px 12px rgba(28,44,68,.10); }
+    .map-heading { font-size: 13px; font-weight: 750; letter-spacing: -.2px; }
+    .map-caption { color: var(--muted); font-size: 10px; margin-top: 2px; }
+    .map-header-right { display: flex; align-items: center; gap: 8px; }
+    .map-control { display: flex; align-items: center; justify-content: center; min-height: 35px; border: 1px solid rgba(226,231,236,.95); background: #fff; border-radius: 9px; color: #526177; padding: 0 11px; cursor: pointer; font-size: 11px; font-weight: 650; white-space: nowrap; box-shadow: 0 3px 12px rgba(28,44,68,.10); }
+    .map-control:hover { color: var(--blue); border-color: #cbd5ff; }
+    .map-card { position: absolute; inset: 0; }
+    .leaflet-map { width: 100%; height: 100%; min-height: 400px; background: #e8edf0; }
+    .map-fallback { position: absolute; inset: 50% auto auto 50%; z-index: 700; width: min(340px, calc(100% - 30px)); transform: translate(-50%,-50%); padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: var(--shadow); color: #657187; font-size: 12px; line-height: 1.6; }
+    .map-fallback[hidden] { display: none; }
+    .place-map-dot { width: 12px; height: 12px; border: 2px solid #fff; border-radius: 50%; background: #738399; box-shadow: 0 1px 5px rgba(0,0,0,.4); }
+    .place-map-dot.active { background: #4263eb; width: 15px; height: 15px; }
+    .live-map-dot { width: 19px; height: 19px; border: 3px solid #fff; border-radius: 50%; background: #18a879; box-shadow: 0 1px 8px rgba(0,0,0,.45), 0 0 0 7px rgba(32,168,121,.18); }
+    .leaflet-tooltip.place-label { border: 1px solid #e5e9ef; border-radius: 5px; padding: 2px 5px; box-shadow: 0 1px 4px rgba(20,35,60,.13); color: #455369; font-size: 9px; font-weight: 650; }
+    .leaflet-tooltip.place-label:before { display: none; }
+    .map-footer { position: absolute; z-index: 600; left: 14px; bottom: 13px; padding: 7px 10px; border: 1px solid rgba(226,231,236,.9); border-radius: 8px; background: rgba(255,255,255,.94); color: #657187; font-size: 10px; box-shadow: 0 2px 10px rgba(28,44,68,.10); pointer-events: none; }
+    .leaflet-bottom.leaflet-right { bottom: 4px; right: 4px; }
+
+    @media (max-width: 900px) {
+      .workspace { grid-template-columns: 355px minmax(0, 1fr); }
+      .sidebar { padding: 18px 16px; }
+      .topbar { padding: 0 22px; }
+    }
+    @media (max-width: 700px) {
+      .app-shell { height: auto; min-height: 100vh; overflow: visible; }
+      .topbar { height: 58px; flex-basis: 58px; padding: 0 16px; }
+      .brand-mark { width: 34px; height: 34px; }
+      .campus-pill { padding: 7px 9px; }
+      .workspace { display: flex; flex-direction: column; overflow: visible; }
+      .sidebar { border-right: 0; border-bottom: 1px solid var(--line); padding: 19px 18px 20px; overflow: visible; }
+      h1 { font-size: 22px; }
+      .intro { margin-bottom: 18px; }
+      .section-heading { margin-top: 20px; }
+      .route-panel { margin-top: 20px; }
+      .map-area { height: 56vh; min-height: 410px; padding: 0; }
+      .map-caption { font-size: 10px; }
+      .map-header { top: 10px; left: 10px; right: 10px; }
+      .map-footer { left: 10px; bottom: 10px; font-size: 9px; }
+    }
+    @media (max-width: 400px) {
+      .topbar-right { font-size: 0; }
+      .campus-pill { font-size: 10px; }
+      .map-control { padding: 0 8px; font-size: 10px; }
+      .travel-mode { min-width: 52px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">W</div>
+        <div>
+          <div class="brand-name">way<span>LPU</span></div>
+          <div class="brand-subtitle">Your campus, made easy</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="campus-pill"><span class="campus-dot"></span> Lovely Professional University</div>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="sidebar">
+        <div class="eyebrow">Campus navigation</div>
+        <h1>Where do you<br> want to go?</h1>
+        <p class="intro">Find a place on campus and get a walking route.</p>
+
+        <div class="travel-modes" id="travelModes" role="group" aria-label="Travel mode">
+          <button class="travel-mode active" type="button" data-mode="walking" aria-pressed="true"><span class="travel-mode-icon">🚶</span>Walk</button>
+          <button class="travel-mode" type="button" data-mode="driving" aria-pressed="false"><span class="travel-mode-icon">🚗</span>Drive</button>
+          <button class="travel-mode" type="button" data-mode="bicycling" aria-pressed="false"><span class="travel-mode-icon">🚲</span>Cycle</button>
+          <button class="travel-mode" type="button" data-mode="transit" aria-pressed="false"><span class="travel-mode-icon">🚌</span>Transit</button>
+        </div>
+
+        <form class="route-form" id="routeForm">
+          <div class="field-stack">
+            <div class="field">
+              <div class="field-label-row">
+                <label for="originInput">FROM</label>
+                <button class="location-button" id="locationButton" type="button">◎ Use my live location</button>
+              </div>
+              <div class="input-wrap">
+                <span class="field-icon origin" aria-hidden="true"></span>
+                <input class="place-input" id="originInput" type="text" autocomplete="off" placeholder="Choose starting point">
+                <button class="clear-field" type="button" aria-label="Clear starting point" data-clear="originInput">&times;</button>
+              </div>
+              <div class="location-status" id="locationStatus" role="status" aria-live="polite"></div>
+              <div class="suggestions" id="originSuggestions" role="listbox"></div>
+            </div>
+            <span class="connector" aria-hidden="true"></span>
+            <button class="swap-button" id="swapButton" type="button" aria-label="Swap starting point and destination" title="Swap places">↕</button>
+            <div class="field">
+              <label for="destinationInput">TO</label>
+              <div class="input-wrap">
+                <span class="field-icon destination" aria-hidden="true"></span>
+                <input class="place-input" id="destinationInput" type="text" autocomplete="off" placeholder="Search any campus place">
+                <button class="clear-field" type="button" aria-label="Clear destination" data-clear="destinationInput">&times;</button>
+              </div>
+              <div class="suggestions" id="destinationSuggestions" role="listbox"></div>
+            </div>
+          </div>
+          <button class="find-button" type="submit">⌕ &nbsp; Find my route</button>
+        </form>
+
+        <div class="section-heading">
+          <h2>Popular places</h2>
+          <span>Tap to set destination</span>
+        </div>
+        <div class="quick-list" id="quickList"></div>
+
+        <section class="route-panel" id="routePanel" aria-live="polite">
+          <div class="route-title-row">
+            <div>
+              <h2 class="route-title" id="routeTitle">Route to Block 37</h2>
+              <div class="route-subtitle" id="routeSubtitle">From Main Gate</div>
+            </div>
+            <div class="walking-icon" id="routeModeIcon" aria-label="Walking route">🚶</div>
+          </div>
+          <div class="route-preview">
+            <div class="route-preview-title">Campus route preview</div>
+            <div class="route-preview-text" id="routePathSummary">Approximate route through campus</div>
+          </div>
+          <a class="route-open-link" id="routeOpenLink" href="https://www.google.com/maps/dir/?api=1&amp;travelmode=walking" target="_blank" rel="noopener noreferrer">Open walking route in Google Maps ↗</a>
+          <div class="notice">The map preview is approximate. Google receives your live location only when you open its directions link.</div>
+        </section>
+      </aside>
+
+      <section class="map-area" aria-label="LPU campus route map">
+        <div class="map-header">
+          <div class="map-title-card">
+            <div class="map-heading">LPU campus map</div>
+            <div class="map-caption" id="mapCaption">OpenStreetMap · Campus places only</div>
+          </div>
+          <div class="map-header-right">
+            <button class="map-control" id="recenterMap" type="button" title="Recenter on campus">⌖ Recenter</button>
+            <a class="map-control" id="openGoogleMaps" href="https://www.google.com/maps/dir/?api=1&amp;travelmode=walking" target="_blank" rel="noopener noreferrer" style="text-decoration:none">Open in Google Maps ↗</a>
+          </div>
+        </div>
+        <div class="map-card" id="mapCard">
+          <div class="leaflet-map" id="campusMap" role="application" aria-label="OpenStreetMap of the LPU campus"></div>
+          <div class="map-fallback" id="mapFallback" hidden>Online campus map could not load. Check your internet connection, then use <a id="mapFallbackLink" href="https://www.google.com/maps/dir/?api=1&amp;travelmode=walking" target="_blank" rel="noopener noreferrer">Google Maps directions</a>.</div>
+        </div>
+        <div class="map-footer">Map preview is approximate. For live turn-by-turn directions, open Google Maps.</div>
+      </section>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const nodes = {
+      gate: { x: 55, y: 220 }, plaza: { x: 155, y: 220 },
+      hospital: { x: 155, y: 120 }, hostel: { x: 155, y: 320 },
+      library: { x: 270, y: 120 }, block37: { x: 270, y: 220 },
+      block38: { x: 270, y: 320 }, northCross: { x: 385, y: 120 },
+      foodCourt: { x: 385, y: 220 }, southCross: { x: 385, y: 320 },
+      administration: { x: 385, y: 65 }, block55: { x: 500, y: 120 },
+      student: { x: 500, y: 220 }, sports: { x: 500, y: 320 },
+      convention: { x: 600, y: 120 }, mall: { x: 600, y: 220 },
+      auditorium: { x: 670, y: 220 }, greenPark: { x: 385, y: 380 }
+    };
+
+    const campusBounds = {
+      south: 31.2457534,
+      north: 31.2607949,
+      west: 75.6973474,
+      east: 75.7091258
+    };
+
+    const places = [
+      { name: "Main Gate", category: "Entrance", icon: "🚪", node: "gate", x: 22, y: 235, w: 66, h: 24 },
+      { name: "Central Library", category: "Library", icon: "📚", node: "library", x: 233, y: 82, w: 74, h: 24 },
+      { name: "Block 37", category: "Academic block", icon: "🏢", node: "block37", x: 234, y: 184, w: 72, h: 24 },
+      { name: "Block 38", category: "Academic block", icon: "🏢", node: "block38", x: 234, y: 336, w: 72, h: 24 },
+      { name: "Block 55", category: "Academic block", icon: "🏢", node: "block55", x: 464, y: 82, w: 72, h: 24 },
+      { name: "Student Centre", category: "Student services", icon: "🧑‍🎓", node: "student", x: 453, y: 236, w: 94, h: 24 },
+      { name: "Sports Complex", category: "Sports & recreation", icon: "⚽", node: "sports", x: 451, y: 336, w: 98, h: 24 },
+      { name: "Uni Mall", category: "Shopping & dining", icon: "🛍️", node: "mall", x: 561, y: 236, w: 78, h: 24 },
+      { name: "Auditorium", category: "Events", icon: "🎭", node: "auditorium", x: 628, y: 183, w: 78, h: 24 },
+      { name: "University Hospital", category: "Health & wellness", icon: "🏥", node: "hospital", x: 111, y: 82, w: 88, h: 24 },
+      { name: "Boys' Hostel 1", category: "Residence", icon: "🏠", node: "hostel", x: 109, y: 336, w: 92, h: 24 },
+      { name: "Food Court", category: "Dining", icon: "🍽️", node: "foodCourt", x: 348, y: 236, w: 74, h: 24 },
+      { name: "Administration Block", category: "Campus services", icon: "🏛️", node: "administration", x: 337, y: 29, w: 96, h: 24 },
+      { name: "Convention Centre", category: "Events", icon: "🎤", node: "convention", x: 556, y: 82, w: 88, h: 24 },
+      { name: "Green Park", category: "Outdoor space", icon: "🌳", node: "greenPark", x: 347, y: 389, w: 76, h: 24 },
+      { name: "Welcome Plaza", category: "Campus landmark", icon: "📍", node: "plaza", x: 112, y: 235, w: 86, h: 24 }
+    ];
+
+    const connections = [
+      ["gate", "plaza"], ["plaza", "hospital"], ["plaza", "hostel"], ["plaza", "block37"],
+      ["hospital", "library"], ["library", "block37"], ["block37", "block38"], ["hostel", "block38"],
+      ["library", "northCross"], ["block37", "foodCourt"], ["block38", "southCross"],
+      ["northCross", "administration"], ["northCross", "block55"], ["northCross", "foodCourt"],
+      ["block55", "convention"], ["block55", "student"], ["foodCourt", "student"],
+      ["foodCourt", "southCross"], ["student", "mall"], ["student", "sports"],
+      ["sports", "southCross"], ["convention", "mall"], ["mall", "auditorium"],
+      ["southCross", "greenPark"]
+    ];
+
+    const originInput = document.getElementById("originInput");
+    const destinationInput = document.getElementById("destinationInput");
+    const routePanel = document.getElementById("routePanel");
+    const mapCaption = document.getElementById("mapCaption");
+    const locationButton = document.getElementById("locationButton");
+    const locationStatus = document.getElementById("locationStatus");
+    const originClearButton = document.querySelector('[data-clear="originInput"]');
+    const swapButton = document.getElementById("swapButton");
+    const placeMarkers = new Map();
+    let campusMap = null;
+    let routeLayer = null;
+    let userMarker = null;
+    let accuracyCircle = null;
+    let travelMode = "walking";
+    let locationWatchId = null;
+    let livePosition = null;
+    let originBeforeLocation = "Main Gate";
+
+    originInput.value = "Main Gate";
+    destinationInput.value = "Block 37";
+
+    const adjacency = Object.fromEntries(Object.keys(nodes).map(id => [id, []]));
+    for (const [from, to] of connections) {
+      const length = Math.hypot(nodes[from].x - nodes[to].x, nodes[from].y - nodes[to].y);
+      adjacency[from].push({ id: to, length });
+      adjacency[to].push({ id: from, length });
+    }
+
+    function nodeToLatLng(point) {
+      return [
+        campusBounds.north - ((point.y - 65) / 315) * (campusBounds.north - campusBounds.south),
+        campusBounds.west + ((point.x - 55) / 615) * (campusBounds.east - campusBounds.west)
+      ];
+    }
+
+    function initializeCampusMap() {
+      if (!window.L) {
+        document.getElementById("mapFallback").hidden = false;
+        return;
+      }
+
+      const bounds = L.latLngBounds(
+        [campusBounds.south, campusBounds.west],
+        [campusBounds.north, campusBounds.east]
+      );
+      campusMap = L.map("campusMap", {
+        zoomControl: false,
+        minZoom: 15,
+        maxZoom: 19,
+        maxBounds: bounds,
+        maxBoundsViscosity: 1
+      }).fitBounds(bounds, { padding: [28, 28] });
+
+      const tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      }).addTo(campusMap);
+      let tileErrors = 0;
+      tiles.on("tileerror", () => {
+        tileErrors += 1;
+        if (tileErrors >= 3) document.getElementById("mapFallback").hidden = false;
+      });
+
+      L.control.zoom({ position: "bottomright" }).addTo(campusMap);
+      routeLayer = L.polyline([], { color: "#4263eb", weight: 5, opacity: .9, lineCap: "round" }).addTo(campusMap);
+
+      for (const place of places) {
+        const marker = L.circleMarker(nodeToLatLng(nodes[place.node]), {
+          radius: 5,
+          color: "#fff",
+          weight: 2,
+          fillColor: "#65748b",
+          fillOpacity: 1
+        }).addTo(campusMap);
+        marker.bindTooltip(place.name, { permanent: true, direction: "top", offset: [0, -4], className: "place-label" });
+        marker.on("click", () => {
+          destinationInput.value = place.name;
+          updateRoute();
+        });
+        placeMarkers.set(place.name, marker);
+      }
+
+      document.getElementById("recenterMap").addEventListener("click", () => {
+        if (livePosition && projectCampusLocation(livePosition)) {
+          campusMap.setView([livePosition.latitude, livePosition.longitude], Math.max(campusMap.getZoom(), 17));
+        } else {
+          campusMap.fitBounds(bounds, { padding: [28, 28] });
+        }
+      });
+      campusMap.whenReady(() => campusMap.invalidateSize());
+    }
+
+    function shortestCampusRoute(startId, endId) {
+      const distances = Object.fromEntries(Object.keys(nodes).map(id => [id, Infinity]));
+      const previous = {};
+      const remaining = new Set(Object.keys(nodes));
+      distances[startId] = 0;
+
+      while (remaining.size) {
+        let current = null;
+        for (const id of remaining) {
+          if (current === null || distances[id] < distances[current]) current = id;
+        }
+        if (current === null || distances[current] === Infinity) break;
+        if (current === endId) break;
+        remaining.delete(current);
+
+        for (const neighbor of adjacency[current]) {
+          if (!remaining.has(neighbor.id)) continue;
+          const nextDistance = distances[current] + neighbor.length;
+          if (nextDistance < distances[neighbor.id]) {
+            distances[neighbor.id] = nextDistance;
+            previous[neighbor.id] = current;
+          }
+        }
+      }
+
+      if (startId !== endId && previous[endId] === undefined) return null;
+      const path = [endId];
+      while (path[0] !== startId) path.unshift(previous[path[0]]);
+      return path;
+    }
+
+    function projectCampusLocation(position) {
+      const { latitude, longitude } = position;
+      if (latitude < campusBounds.south || latitude > campusBounds.north ||
+          longitude < campusBounds.west || longitude > campusBounds.east) return null;
+      return {
+        x: 55 + ((longitude - campusBounds.west) / (campusBounds.east - campusBounds.west)) * 615,
+        y: 65 + ((campusBounds.north - latitude) / (campusBounds.north - campusBounds.south)) * 315
+      };
+    }
+
+    function nearestCampusNode(point) {
+      return Object.keys(nodes).reduce((nearest, id) => {
+        const distance = Math.hypot(nodes[id].x - point.x, nodes[id].y - point.y);
+        return distance < nearest.distance ? { id, distance } : nearest;
+      }, { id: null, distance: Infinity }).id;
+    }
+
+    function renderCampusRoute(origin, destination, position) {
+      const start = places.find(place => place.name.toLowerCase() === origin.toLowerCase());
+      const end = places.find(place => place.name.toLowerCase() === destination.toLowerCase());
+      const livePoint = position ? projectCampusLocation(position) : null;
+      let path = null;
+
+      if (campusMap && routeLayer && end && (position ? livePoint : start) && travelMode === "walking") {
+        const routeStart = position ? nearestCampusNode(livePoint) : start.node;
+        path = shortestCampusRoute(routeStart, end.node);
+        if (path) {
+          const routePoints = path.map(id => nodeToLatLng(nodes[id]));
+          if (position) routePoints.unshift([position.latitude, position.longitude]);
+          routeLayer.setLatLngs(routePoints);
+        } else routeLayer.setLatLngs([]);
+      } else if (routeLayer) {
+        routeLayer.setLatLngs([]);
+      }
+
+      for (const [name, marker] of placeMarkers) {
+        const selected = name === (livePosition ? destination : origin) || name === destination;
+        marker.setStyle({
+          fillColor: name === origin && !livePosition ? "#20a879" : selected ? "#4263eb" : "#65748b",
+          radius: selected ? 7 : 5
+        });
+      }
+
+      if (livePoint && campusMap) {
+        const point = [position.latitude, position.longitude];
+        if (!userMarker) userMarker = L.circleMarker(point, {
+          radius: 8, color: "#fff", weight: 3, fillColor: "#18a879", fillOpacity: 1
+        }).addTo(campusMap).bindTooltip("Your live location");
+        else userMarker.setLatLng(point);
+        if (!accuracyCircle) accuracyCircle = L.circle(point, {
+          radius: position.accuracy, color: "#18a879", weight: 1, fillOpacity: .08
+        }).addTo(campusMap);
+        else accuracyCircle.setLatLng(point).setRadius(position.accuracy);
+        if (!campusMap.getBounds().pad(-.2).contains(point)) campusMap.panTo(point);
+      } else if (campusMap) {
+        if (userMarker) campusMap.removeLayer(userMarker);
+        if (accuracyCircle) campusMap.removeLayer(accuracyCircle);
+        userMarker = null;
+        accuracyCircle = null;
+      }
+      return path ? { path, start, end, livePoint } : null;
+    }
+
+    function setLocationStatus(message, isError) {
+      locationStatus.textContent = message;
+      locationStatus.classList.toggle("error", Boolean(isError));
+    }
+
+    function resetLocationTracking() {
+      if (locationWatchId !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(locationWatchId);
+      }
+      locationWatchId = null;
+      livePosition = null;
+      originInput.readOnly = false;
+      originInput.value = originBeforeLocation;
+      originClearButton.disabled = false;
+      swapButton.disabled = false;
+      locationButton.disabled = false;
+      locationButton.textContent = "◎ Use my live location";
+    }
+
+    function handleLocationError(error) {
+      const messages = {
+        1: "Location permission was denied. Allow it in your browser or choose a starting place.",
+        2: "Your location is unavailable. Check your device location settings and try again.",
+        3: "Getting your location timed out. Try again when GPS reception is better."
+      };
+      resetLocationTracking();
+      setLocationStatus(messages[error.code] || "Could not get your location. Choose a starting place or try again.", true);
+      updateRoute();
+    }
+
+    function toggleLiveLocation() {
+      if (locationWatchId !== null) {
+        resetLocationTracking();
+        setLocationStatus("Live location tracking stopped.");
+        updateRoute();
+        return;
+      }
+      if (!window.isSecureContext || !navigator.geolocation) {
+        setLocationStatus("Live location needs browser permission and a secure page (HTTPS or localhost).", true);
+        return;
+      }
+
+      originBeforeLocation = originInput.value || "Main Gate";
+      locationButton.disabled = true;
+      locationButton.textContent = "Getting location…";
+      setLocationStatus("Waiting for browser location permission…");
+      try {
+        locationWatchId = navigator.geolocation.watchPosition(position => {
+          livePosition = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy
+          };
+          originInput.value = "My live location";
+          originInput.readOnly = true;
+          originClearButton.disabled = true;
+          swapButton.disabled = true;
+          locationButton.disabled = false;
+          locationButton.textContent = "■ Stop following";
+          setLocationStatus(`Following you · accuracy ±${Math.round(livePosition.accuracy)} m`);
+          updateRoute();
+        }, handleLocationError, {
+          enableHighAccuracy: true,
+          maximumAge: 2000,
+          timeout: 15000
+        });
+        locationButton.disabled = false;
+        locationButton.textContent = "■ Stop following";
+      } catch (error) {
+        resetLocationTracking();
+        setLocationStatus(`Could not start location tracking: ${error.message}`, true);
+      }
+    }
+
+    function campusSearch(value) {
+      const place = value.trim();
+      if (!place) return "";
+      return /lovely professional university|\blpu\b/i.test(place)
+        ? place
+        : `${place}, Lovely Professional University, Phagwara, Punjab, India`;
+    }
+
+    function buildDirectionsUrl() {
+      const origin = livePosition
+        ? `${livePosition.latitude.toFixed(6)},${livePosition.longitude.toFixed(6)}`
+        : campusSearch(originInput.value);
+      const destination = campusSearch(destinationInput.value);
+      const url = new URL("https://www.google.com/maps/dir/");
+      url.searchParams.set("api", "1");
+      url.searchParams.set("origin", origin);
+      url.searchParams.set("destination", destination);
+      url.searchParams.set("travelmode", travelMode);
+      return url;
+    }
+
+    function updateRoute() {
+      const origin = originInput.value.trim();
+      const destination = destinationInput.value.trim();
+      const modes = {
+        walking: { label: "walking", icon: "🚶" },
+        driving: { label: "driving", icon: "🚗" },
+        bicycling: { label: "cycling", icon: "🚲" },
+        transit: { label: "transit", icon: "🚌" }
+      };
+      const selectedMode = modes[travelMode];
+      if (!origin || !destination) {
+        mapCaption.textContent = `OpenStreetMap · Campus places only · ${selectedMode.label}`;
+        document.getElementById("routePathSummary").textContent = "Choose a starting point and destination.";
+        for (const id of ["routeOpenLink", "openGoogleMaps", "mapFallbackLink"]) {
+          document.getElementById(id).removeAttribute("href");
+        }
+        routePanel.classList.remove("visible");
+        renderCampusRoute("", "", livePosition);
+        return;
+      }
+
+      const mapsUrl = buildDirectionsUrl();
+      const campusRoute = renderCampusRoute(origin, destination, livePosition);
+      document.getElementById("routeTitle").textContent = `Route to ${destination}`;
+      document.getElementById("routeSubtitle").textContent = `From ${origin}`;
+      document.getElementById("routeModeIcon").textContent = selectedMode.icon;
+      document.getElementById("routeModeIcon").setAttribute("aria-label", `${selectedMode.label} route`);
+      document.getElementById("routeOpenLink").href = mapsUrl.href;
+      document.getElementById("routeOpenLink").textContent = `Open ${selectedMode.label} route in Google Maps ↗`;
+      document.getElementById("openGoogleMaps").href = mapsUrl.href;
+      document.getElementById("mapFallbackLink").href = mapsUrl.href;
+      if (campusRoute && travelMode === "walking") {
+        const intermediatePlaces = campusRoute.path
+          .map(id => places.find(place => place.node === id))
+          .filter(place => place && place.name !== campusRoute.start?.name && place.name !== destination)
+          .map(place => place.name);
+        const via = [...new Set(intermediatePlaces)];
+        document.getElementById("routePathSummary").textContent = via.length
+          ? `Approximate campus paths via ${via.join(" → ")}.`
+          : "Approximate path along the campus map.";
+        mapCaption.textContent = "Campus places only · Approximate walking route";
+      } else if (travelMode !== "walking") {
+        document.getElementById("routePathSummary").textContent = `Google Maps will calculate the ${selectedMode.label} route.`;
+        mapCaption.textContent = `Campus places only · ${selectedMode.label} directions open in Google Maps`;
+      } else if (livePosition && !projectCampusLocation(livePosition)) {
+        document.getElementById("routePathSummary").textContent = "Your live location is outside the campus map area.";
+        mapCaption.textContent = "Your live location is outside this campus-only map";
+      } else {
+        document.getElementById("routePathSummary").textContent = "No saved map preview for one or both places. Google Maps can still search the destination.";
+        mapCaption.textContent = "Campus places only · No saved route preview for this place";
+      }
+      routePanel.classList.add("visible");
+    }
+
+    function selectPlace(input, list, place) {
+      input.value = place.name;
+      list.classList.remove("open");
+      updateRoute();
+    }
+
+    function openSuggestions(input, list) {
+      const query = input.value.trim().toLowerCase();
+      const matches = places
+        .filter(place => place.name.toLowerCase().includes(query) || place.category.toLowerCase().includes(query))
+        .slice(0, 8);
+      list.innerHTML = matches.length ? matches.map((place, index) =>
+        `<button class="suggestion" type="button" role="option" data-place-index="${places.indexOf(place)}">
+          <span class="suggestion-icon">${place.icon}</span>
+          <span><span class="suggestion-name">${place.name}</span><span class="suggestion-category">${place.category}</span></span>
+        </button>`
+      ).join("") : `<div class="no-results">No saved match. Press “Find my route” to search this place on Google Maps.</div>`;
+      list.classList.add("open");
+      list.querySelectorAll(".suggestion").forEach(button => {
+        button.addEventListener("click", () => selectPlace(input, list, places[Number(button.dataset.placeIndex)]));
+      });
+    }
+
+    function buildQuickPlaces() {
+      const favorites = ["Central Library", "Block 37", "Block 55", "Uni Mall", "Student Centre", "Sports Complex"];
+      document.getElementById("quickList").innerHTML = favorites.map(name => {
+        const place = places.find(item => item.name === name);
+        const index = places.indexOf(place);
+        return `<button class="quick-chip" type="button" data-place-index="${index}"><span class="chip-emoji">${place.icon}</span>${place.name}</button>`;
+      }).join("");
+      document.querySelectorAll(".quick-chip").forEach(button => button.addEventListener("click", () => {
+        selectPlace(destinationInput, document.getElementById("destinationSuggestions"), places[Number(button.dataset.placeIndex)]);
+      }));
+    }
+
+    document.getElementById("routeForm").addEventListener("submit", event => {
+      event.preventDefault();
+      if (!originInput.value.trim()) {
+        originInput.focus();
+        return;
+      }
+      if (!destinationInput.value.trim()) {
+        destinationInput.focus();
+        return;
+      }
+      updateRoute();
+      document.getElementById("originSuggestions").classList.remove("open");
+      document.getElementById("destinationSuggestions").classList.remove("open");
+    });
+
+    for (const [input, id] of [[originInput, "originSuggestions"], [destinationInput, "destinationSuggestions"]]) {
+      const list = document.getElementById(id);
+      input.addEventListener("focus", () => openSuggestions(input, list));
+      input.addEventListener("input", () => openSuggestions(input, list));
+      input.addEventListener("keydown", event => {
+        if (event.key === "Escape") list.classList.remove("open");
+      });
+    }
+
+    document.addEventListener("click", event => {
+      for (const id of ["originSuggestions", "destinationSuggestions"]) {
+        const list = document.getElementById(id);
+        const input = list.parentElement.querySelector("input");
+        if (!list.contains(event.target) && !input.contains(event.target)) list.classList.remove("open");
+      }
+    });
+
+    document.querySelectorAll(".clear-field").forEach(button => button.addEventListener("click", () => {
+      if (button.dataset.clear === "originInput" && locationWatchId !== null) {
+        resetLocationTracking();
+        setLocationStatus("Live location tracking stopped.");
+      }
+      const input = document.getElementById(button.dataset.clear);
+      input.value = "";
+      input.focus();
+      input.dispatchEvent(new Event("input"));
+      updateRoute();
+    }));
+
+    document.getElementById("swapButton").addEventListener("click", () => {
+      [originInput.value, destinationInput.value] = [destinationInput.value, originInput.value];
+      updateRoute();
+    });
+
+    locationButton.addEventListener("click", toggleLiveLocation);
+
+    document.querySelectorAll(".travel-mode").forEach(button => button.addEventListener("click", () => {
+      travelMode = button.dataset.mode;
+      document.querySelectorAll(".travel-mode").forEach(modeButton => {
+        const selected = modeButton === button;
+        modeButton.classList.toggle("active", selected);
+        modeButton.setAttribute("aria-pressed", String(selected));
+      });
+      updateRoute();
+    }));
+
+    initializeCampusMap();
+    buildQuickPlaces();
+    updateRoute();
+  </script>
+</body>
+</html>
